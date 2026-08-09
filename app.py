@@ -1,5 +1,6 @@
 from pathlib import Path
 from threading import Lock
+import re
 
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
@@ -23,6 +24,17 @@ app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 frames = {key: None for key in FILES}
 load_errors = {}
 data_lock = Lock()
+
+
+def read_csv_compatible(path):
+    """Read CSV exports encoded as UTF-8 or common Windows/Latin encodings."""
+    last_error = None
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return pd.read_csv(path, low_memory=False, encoding=encoding)
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    raise last_error
 
 
 def load_medical_terms():
@@ -49,6 +61,11 @@ def resolve_search_terms(keyword):
     return [keyword]
 
 
+def term_pattern(term):
+    """Match a literal term without allowing it inside a larger word."""
+    return rf"(?<!\w){re.escape(term)}(?!\w)"
+
+
 def clean_records(df):
     """Convert NaN values to JSON-safe nulls."""
     return df.astype(object).where(pd.notna(df), None).to_dict(orient="records")
@@ -62,20 +79,19 @@ def load_dataset(kind):
         return
 
     try:
-        df = pd.read_csv(path, low_memory=False)
+        df = read_csv_compatible(path)
         if kind in ("diagnosis", "procedure"):
             if "Description" not in df.columns:
                 raise ValueError("Required column 'Description' was not found.")
         else:
-            required = {"PHARM_CLASSES", "PROPRIETARYNAME", "NONPROPRIETARYNAME"}
+            required = {"PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"}
             missing = sorted(required.difference(df.columns))
             if missing:
                 raise ValueError("Missing required columns: " + ", ".join(missing))
-            df = df[df["PHARM_CLASSES"].fillna("").str.upper() != "UNKNOWN"].copy()
             df["content"] = (
-                df["PHARM_CLASSES"].fillna("").astype(str) + " "
-                + df["PROPRIETARYNAME"].fillna("").astype(str) + " "
-                + df["NONPROPRIETARYNAME"].fillna("").astype(str)
+                df["PROPRIETARYNAME"].fillna("").astype(str) + " "
+                + df["NONPROPRIETARYNAME"].fillna("").astype(str) + " "
+                + df["SUBSTANCENAME"].fillna("").astype(str)
             )
 
         frames[kind] = df
@@ -181,7 +197,9 @@ def search():
             searchable = df[column].fillna("").astype(str)
             mask = pd.Series(False, index=df.index)
             for term in search_terms:
-                mask |= searchable.str.contains(term, case=False, na=False, regex=False)
+                mask |= searchable.str.contains(
+                    term_pattern(term), case=False, na=False, regex=True
+                )
             matched = df.loc[mask].drop(columns=["content"], errors="ignore")
             total = len(matched)
             # Keep the response/browser responsive for very broad searches.

@@ -1,24 +1,44 @@
 # MedCode Finder
 
-A local web version of the medical code search notebook. It uses HTML, CSS and JavaScript for the interface and Python/Flask with pandas for loading and searching CSV data. No external API is used.
+MedCode Finder is a local web application for searching diagnosis, procedure, and drug/NDC records stored in CSV files. The browser interface runs against a Python/Flask server on your computer; the application does not call an external search API.
 
-## Run
+## Quick start
+
+### Requirements
+
+- Python 3.10 or newer
+- A modern web browser
+- CSV datasets containing the columns described below
+
+### Install and run
+
+Open PowerShell in the project directory and run:
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Open `http://127.0.0.1:5000` and upload the three CSV datasets from **Manage datasets**.
+Then open <http://127.0.0.1:5000>.
 
-Expected files and required columns:
+Select **Manage datasets**, upload the CSV files you want to search, enter a term or code, select one or more datasets, and choose **Search records**.
 
-- Diagnosis: `Description`
-- Procedure: `Description`
-- NDC: `PHARM_CLASSES`, `PROPRIETARYNAME`, `NONPROPRIETARYNAME`
+## Required dataset columns
 
-Uploaded files are stored in the local `data` directory. Searches use case-insensitive literal substring matching, matching the notebook workflow while safely handling special characters.
+| Dataset | Required columns | Stored filename |
+| --- | --- | --- |
+| Diagnosis | `Description` | `data/diagnosis_codes.csv` |
+| Procedure | `Description` | `data/procedure_codes.csv` |
+| Drug / NDC | `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME` | `data/lu_ndc(in).csv` |
 
-## Medical terminology expansion
+Uploaded CSV files may use UTF-8, Windows-1252, or Latin-1 encoding and may be up to 250 MB each. An uploaded file is copied into the local `data` directory under the fixed filename shown above.
 
-The app first checks for an exact, case-insensitive match in `Short_Term` and `Long_Term` in `data/medical_terms.csv`. A match searches every semicolon-separated synonym in `Search_Terms`; otherwise the original input is searched directly.
+## Full documentation
+
+See the [User Manual](docs/USER_MANUAL.md) for complete installation, dataset preparation, searching, terminology expansion, result interpretation, troubleshooting, privacy, and administration instructions.
+
+## Important notice
+
+This application is a lookup aid, not a clinical decision system. Verify codes against the authoritative code set and current organizational guidance before using them for care, billing, reporting, or compliance.
