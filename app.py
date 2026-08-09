@@ -11,6 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 MEDICAL_TERMS_FILE = DATA_DIR / "medical_terms.csv"
+MEDICAL_TERM_COLUMNS = ["Text", "Short_Term", "Long_Term", "Search_Terms"]
 
 FILES = {
     "diagnosis": "diagnosis_codes.csv",
@@ -31,7 +32,9 @@ def read_csv_compatible(path):
     last_error = None
     for encoding in ("utf-8-sig", "cp1252", "latin-1"):
         try:
-            return pd.read_csv(path, low_memory=False, encoding=encoding)
+            # Codes are identifiers, not numbers. Reading all fields as text keeps
+            # significant leading zeroes intact and makes code searches reliable.
+            return pd.read_csv(path, low_memory=False, encoding=encoding, dtype=str)
         except UnicodeDecodeError as exc:
             last_error = exc
     raise last_error
@@ -41,7 +44,7 @@ def load_medical_terms():
     """Load the local terminology table used to expand recognized searches."""
     try:
         terms = pd.read_csv(MEDICAL_TERMS_FILE, dtype=str).fillna("")
-        required = {"Text", "Short_Term", "Long_Term", "Search_Terms"}
+        required = set(MEDICAL_TERM_COLUMNS)
         if not required.issubset(terms.columns):
             return []
         return terms.to_dict(orient="records")
@@ -50,15 +53,61 @@ def load_medical_terms():
 
 
 def resolve_search_terms(keyword):
-    """Expand an exact short/long-term match; otherwise use the input directly."""
+    """Expand an exact short, long, or synonym match; otherwise use the input."""
     normalized = keyword.casefold()
     for row in load_medical_terms():
-        candidates = (row["Short_Term"].strip(), row["Long_Term"].strip())
+        aliases = [value.strip() for value in row["Search_Terms"].split(";") if value.strip()]
+        candidates = [row["Short_Term"].strip(), row["Long_Term"].strip(), *aliases]
         if any(value.casefold() == normalized for value in candidates if value):
-            expanded = [value.strip() for value in row["Search_Terms"].split(";") if value.strip()]
-            expanded.extend(value for value in candidates if value)
-            return list(dict.fromkeys(expanded))
+            expanded = aliases + [row["Short_Term"].strip(), row["Long_Term"].strip()]
+            return list(dict.fromkeys(value for value in expanded if value))
     return [keyword]
+
+
+def split_term_aliases(value):
+    """Accept semicolon/newline-separated aliases and return unique clean values."""
+    aliases = []
+    seen = set()
+    for item in re.split(r"[;\r\n]+", str(value)):
+        cleaned = item.strip()
+        if cleaned and cleaned.casefold() not in seen:
+            aliases.append(cleaned)
+            seen.add(cleaned.casefold())
+    return aliases
+
+
+def save_medical_term(short_term, long_term, aliases):
+    """Append one validated terminology relationship to the local CSV catalog."""
+    if MEDICAL_TERMS_FILE.exists():
+        existing_columns = set(pd.read_csv(MEDICAL_TERMS_FILE, nrows=0).columns)
+        if not set(MEDICAL_TERM_COLUMNS).issubset(existing_columns):
+            raise ValueError(
+                "The existing medical_terms.csv is missing required columns; "
+                "correct it before adding terms."
+            )
+    rows = load_medical_terms()
+    normalized_new = {value.casefold() for value in [short_term, long_term, *aliases] if value}
+
+    for row in rows:
+        existing = [row["Short_Term"].strip(), row["Long_Term"].strip()]
+        existing.extend(split_term_aliases(row["Search_Terms"]))
+        duplicate = next((value for value in existing if value.casefold() in normalized_new), None)
+        if duplicate:
+            raise ValueError(f"'{duplicate}' already belongs to an existing medical term.")
+
+    primary = {short_term.casefold(), long_term.casefold()}
+    aliases = [value for value in aliases if value.casefold() not in primary]
+    rows.append({
+        "Text": long_term,
+        "Short_Term": short_term,
+        "Long_Term": long_term,
+        "Search_Terms": ";".join(aliases),
+    })
+    temporary_file = MEDICAL_TERMS_FILE.with_suffix(".tmp")
+    pd.DataFrame(rows, columns=MEDICAL_TERM_COLUMNS).to_csv(
+        temporary_file, index=False, encoding="utf-8-sig"
+    )
+    temporary_file.replace(MEDICAL_TERMS_FILE)
 
 
 def term_pattern(term):
@@ -69,6 +118,16 @@ def term_pattern(term):
 def clean_records(df):
     """Convert NaN values to JSON-safe nulls."""
     return df.astype(object).where(pd.notna(df), None).to_dict(orient="records")
+
+
+def normalize_ndc(value):
+    """Left-pad numeric NDC identifiers to 11 digits without altering other values."""
+    if pd.isna(value):
+        return value
+    cleaned = str(value).strip()
+    if cleaned.isdigit() and len(cleaned) < 11:
+        return cleaned.zfill(11)
+    return cleaned
 
 
 def load_dataset(kind):
@@ -84,12 +143,16 @@ def load_dataset(kind):
             if "Description" not in df.columns:
                 raise ValueError("Required column 'Description' was not found.")
         else:
-            required = {"PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"}
+            required = {"NDC", "PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"}
             missing = sorted(required.difference(df.columns))
             if missing:
                 raise ValueError("Missing required columns: " + ", ".join(missing))
+            original_ndc = df["NDC"].fillna("").astype(str).str.strip()
+            df["NDC"] = df["NDC"].map(normalize_ndc)
             df["content"] = (
-                df["PROPRIETARYNAME"].fillna("").astype(str) + " "
+                df["NDC"].fillna("").astype(str) + " "
+                + original_ndc + " "
+                + df["PROPRIETARYNAME"].fillna("").astype(str) + " "
                 + df["NONPROPRIETARYNAME"].fillna("").astype(str) + " "
                 + df["SUBSTANCENAME"].fillna("").astype(str)
             )
@@ -138,6 +201,38 @@ def abbreviation_options(term):
     keyword = term.strip()
     options = resolve_search_terms(keyword)
     return jsonify({"term": keyword, "matched": options != [keyword], "options": options})
+
+
+@app.post("/medical-terms")
+def add_medical_term():
+    payload = request.get_json(silent=True) or {}
+    short_term = str(payload.get("short_term", "")).strip()
+    long_term = str(payload.get("long_term", "")).strip()
+    aliases = split_term_aliases(payload.get("search_terms", ""))
+
+    if not long_term:
+        return jsonify({"error": "Enter the full medical term."}), 400
+    if not short_term and not aliases:
+        return jsonify({"error": "Enter an abbreviation or at least one related search term."}), 400
+    if any(len(value) > 300 for value in [short_term, long_term, *aliases]):
+        return jsonify({"error": "Each terminology value must be 300 characters or fewer."}), 400
+    if len(aliases) > 50:
+        return jsonify({"error": "Enter no more than 50 related search terms."}), 400
+
+    try:
+        with data_lock:
+            save_medical_term(short_term, long_term, aliases)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except (OSError, TypeError, pd.errors.ParserError) as exc:
+        return jsonify({"error": f"Could not save the medical term: {exc}"}), 500
+
+    return jsonify({
+        "message": "Medical terminology saved locally.",
+        "short_term": short_term,
+        "long_term": long_term,
+        "search_terms": resolve_search_terms(short_term or long_term),
+    }), 201
 
 
 @app.post("/upload")
@@ -193,8 +288,17 @@ def search():
                 unavailable.append(kind)
                 continue
 
-            column = "content" if kind == "ndc" else "Description"
-            searchable = df[column].fillna("").astype(str)
+            if kind == "ndc":
+                searchable = df["content"].fillna("").astype(str)
+            else:
+                # Description is required. Common singular/plural code column
+                # names are detected without requiring specific capitalization.
+                search_columns = ["Description"]
+                search_columns.extend(
+                    column for column in df.columns
+                    if column.casefold() in {"code", "codes"}
+                )
+                searchable = df[search_columns].fillna("").astype(str).agg(" ".join, axis=1)
             mask = pd.Series(False, index=df.index)
             for term in search_terms:
                 mask |= searchable.str.contains(

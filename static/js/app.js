@@ -3,7 +3,10 @@ const setupPanel = document.querySelector('#setupPanel');
 const message = document.querySelector('#message');
 const searchButton = document.querySelector('.primary-button');
 const normalizationPanel = document.querySelector('#normalizationPanel');
+const termSuggestion = document.querySelector('#termSuggestion');
+const termForm = document.querySelector('#termForm');
 let pendingSearch = null;
+let lastSearch = null;
 
 document.querySelector('#setupToggle').addEventListener('click', () => setupPanel.classList.toggle('hidden'));
 document.querySelector('#closeSetup').addEventListener('click', () => setupPanel.classList.add('hidden'));
@@ -86,6 +89,7 @@ async function runSearch(keyword, datasets, abbreviation = '') {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
+    lastSearch = { keyword, datasets };
     renderResults(data, abbreviation);
     if (data.unavailable.length) {
       message.textContent = `Upload ${data.unavailable.map(item => names[item]).join(', ')} to include it in this search.`;
@@ -109,6 +113,10 @@ function renderResults(data, abbreviation = '') {
     : `“${data.keyword}”`;
   document.querySelector('#summary').innerHTML = data.summary.map(item => `
     <div class="summary-card"><strong>${item.matches.toLocaleString()}</strong><span>${names[item.dataset]}</span></div>`).join('');
+  termSuggestion.classList.toggle('hidden', data.expanded);
+  document.querySelector('#termSuggestionPrompt').classList.remove('hidden');
+  termForm.classList.add('hidden');
+  document.querySelector('#termFormMessage').textContent = '';
   document.querySelector('#resultTables').innerHTML = Object.entries(data.results).map(([kind, result]) => {
     const head = result.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('');
     const body = result.rows.map(row => `<tr>${result.columns.map(column => `<td>${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('');
@@ -120,5 +128,49 @@ function renderResults(data, abbreviation = '') {
   section.classList.remove('hidden');
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+document.querySelector('#openTermForm').addEventListener('click', () => {
+  const keyword = lastSearch?.keyword || '';
+  const looksLikeAbbreviation = !keyword.includes(' ') && keyword.length <= 12;
+  document.querySelector('#termShort').value = looksLikeAbbreviation ? keyword : '';
+  document.querySelector('#termLong').value = looksLikeAbbreviation ? '' : keyword;
+  document.querySelector('#termAliases').value = '';
+  document.querySelector('#termSuggestionPrompt').classList.add('hidden');
+  termForm.classList.remove('hidden');
+  (looksLikeAbbreviation ? document.querySelector('#termLong') : document.querySelector('#termShort')).focus();
+});
+
+document.querySelector('#cancelTermForm').addEventListener('click', () => {
+  termForm.classList.add('hidden');
+  document.querySelector('#termSuggestionPrompt').classList.remove('hidden');
+});
+
+termForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const submitButton = termForm.querySelector('button[type=submit]');
+  const formMessage = document.querySelector('#termFormMessage');
+  submitButton.disabled = true;
+  formMessage.textContent = '';
+  try {
+    const response = await fetch('/medical-terms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        short_term: document.querySelector('#termShort').value.trim(),
+        long_term: document.querySelector('#termLong').value.trim(),
+        search_terms: document.querySelector('#termAliases').value.trim()
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    termSuggestion.classList.add('hidden');
+    message.textContent = 'Terminology saved. Re-running the search with all related terms.';
+    await runSearch(lastSearch.keyword, lastSearch.datasets);
+  } catch (error) {
+    formMessage.textContent = error.message;
+  } finally {
+    submitButton.disabled = false;
+  }
+});
 
 refreshStatus().catch(() => { message.textContent = 'Could not read dataset status.'; });

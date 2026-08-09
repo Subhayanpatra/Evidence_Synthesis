@@ -27,11 +27,11 @@ Select **Manage datasets**, upload the CSV files you want to search, enter a ter
 
 ## Required dataset columns
 
-| Dataset | Required columns | Stored filename |
-| --- | --- | --- |
-| Diagnosis | `Description` | `data/diagnosis_codes.csv` |
-| Procedure | `Description` | `data/procedure_codes.csv` |
-| Drug / NDC | `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME` | `data/lu_ndc(in).csv` |
+| Dataset | Required columns | Searched columns | Stored filename |
+| --- | --- | --- | --- |
+| Diagnosis | `Description` | `Description` and optional `code`/`codes` | `data/diagnosis_codes.csv` |
+| Procedure | `Description` | `Description` and optional `code`/`codes` | `data/procedure_codes.csv` |
+| Drug / NDC | `NDC`, `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME` | `NDC` and all three name/substance columns | `data/lu_ndc(in).csv` |
 
 Uploaded CSV files may use UTF-8, Windows-1252, or Latin-1 encoding and may be up to 250 MB each. An uploaded file is copied into the local `data` directory under the fixed filename shown above.
 

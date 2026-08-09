@@ -78,6 +78,32 @@
         <p id="resultKeyword" class="result-keyword"></p>
       </div>
       <div id="summary" class="summary-grid"></div>
+      <section id="termSuggestion" class="term-suggestion hidden" aria-labelledby="term-suggestion-title">
+        <div id="termSuggestionPrompt">
+          <p class="step">TERM NOT RECOGNIZED</p>
+          <h3 id="term-suggestion-title">Teach MedCode Finder this medical term</h3>
+          <p class="muted">Connect an abbreviation, full name, and related names so future searches find all of them together.</p>
+          <button id="openTermForm" class="text-button" type="button">Add terminology</button>
+        </div>
+        <form id="termForm" class="term-form hidden">
+          <div class="term-fields">
+            <label>Short term or abbreviation <span>(optional)</span>
+              <input id="termShort" type="text" maxlength="300" placeholder="e.g. COPD">
+            </label>
+            <label>Full medical term
+              <input id="termLong" type="text" maxlength="300" placeholder="e.g. Chronic obstructive pulmonary disease" required>
+            </label>
+            <label class="term-aliases">Related names or synonyms <span>(separate with semicolons)</span>
+              <textarea id="termAliases" maxlength="15000" placeholder="e.g. chronic obstructive lung disease; chronic airflow limitation"></textarea>
+            </label>
+          </div>
+          <p id="termFormMessage" class="message" role="status"></p>
+          <div class="normalization-actions">
+            <button class="primary-button" type="submit"><span>Save terminology</span><b>&rarr;</b></button>
+            <button id="cancelTermForm" class="text-button" type="button">Cancel</button>
+          </div>
+        </form>
+      </section>
       <div id="resultTables"></div>
     </section>
   </main>

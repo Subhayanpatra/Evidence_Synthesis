@@ -109,17 +109,18 @@ Description
 Example:
 
 ```csv
-Code,Description
+codes,Description
 99213,Office or other outpatient visit
 ```
 
-Diagnosis and procedure searches inspect only the `Description` column. A code stored in a separate `Code` column is displayed in matching rows, but the current application does not search that separate column. To make codes searchable, include the code in `Description` or modify the application search configuration.
+Diagnosis and procedure searches inspect `Description` plus any code column named `code` or `codes`. Code-column detection is case-insensitive, so `Code`, `CODE`, and `codes` are supported. The `Description` column remains required. A user can search with either a description such as `hypertension` or a code such as `001`, `I10`, or `99213`.
 
 ### Drug / NDC dataset
 
 Required columns:
 
 ```text
+NDC
 PROPRIETARYNAME
 NONPROPRIETARYNAME
 SUBSTANCENAME
@@ -128,11 +129,11 @@ SUBSTANCENAME
 Example:
 
 ```csv
-PRODUCTNDC,PROPRIETARYNAME,NONPROPRIETARYNAME,SUBSTANCENAME
-0000-0001,Example Brand,example generic,EXAMPLE INGREDIENT
+NDC,PROPRIETARYNAME,NONPROPRIETARYNAME,SUBSTANCENAME
+250,Example Brand,example generic,EXAMPLE INGREDIENT
 ```
 
-The application searches the combined text of all three required name/substance columns. Other columns, such as the NDC identifier, appear in results but are not searched unless their value is also present in one of the three searchable columns.
+The application searches the `NDC` identifier and the combined text of all three required name/substance columns. Numeric NDC values shorter than 11 digits are left-padded with zeros when the file loads. For example, `250` is displayed as `00000000250`. Already-11-digit identifiers and non-numeric identifiers are left unchanged. Both the original value and normalized 11-digit value can be used to search.
 
 ### File size and encoding
 
@@ -169,8 +170,8 @@ Search behavior:
 - Search text is treated literally. Characters such as `+`, `(`, or `.` are not interpreted as regular-expression instructions.
 - A match must have non-word boundaries around the query. For example, searching `cat` does not match the `cat` characters inside `cataract`.
 - The entire entered phrase is searched as one term; the application does not independently require every typed word.
-- Diagnosis and procedure searches inspect `Description`.
-- Drug/NDC searches inspect the three combined name and substance fields.
+- Diagnosis and procedure searches inspect `Description` and, when present, a `code` or `codes` column.
+- Drug/NDC searches inspect `NDC` plus the three combined name and substance fields.
 - Searches do not use fuzzy spelling, stemming, ranking, or clinical reasoning.
 
 If a selected dataset is not loaded, the search continues in the available datasets and a message identifies the missing one.
@@ -187,7 +188,7 @@ If a table says **No matching records found**:
 - Try a shorter or more general phrase.
 - Check spelling and punctuation.
 - Inspect the source file to ensure the expected wording is in a searchable column.
-- Remember that code-only columns in diagnosis/procedure files and identifier-only columns in NDC files are not searched by default.
+- Confirm that diagnosis/procedure identifiers are in a column named `code` or `codes` (capitalization does not matter), and that drug identifiers are in the required `NDC` column.
 
 ## 8. Medical terminology expansion
 
@@ -212,12 +213,26 @@ Chronic obstructive pulmonary disease,COPD,Chronic obstructive pulmonary disease
 
 Expansion rules:
 
-1. The entered query is compared with `Short_Term` and `Long_Term` using an exact, case-insensitive comparison.
+1. The entered query is compared with `Short_Term`, `Long_Term`, and every semicolon-separated related name using an exact, case-insensitive comparison.
 2. When a row matches, each semicolon-separated value in `Search_Terms` is searched.
 3. The short and long terms are also added to the search, with duplicates removed.
 4. If there is no exact match, the original query is used unchanged.
 
 Blank or malformed terminology files are ignored. Expansion may increase the result count because a row is returned when any expanded term matches. The `/abbreviations/<term>` endpoint can be used to inspect the resolved options, while the normal `/search` request applies expansion automatically.
+
+### Teaching the application an unknown term
+
+When a search is not already recognized in `medical_terms.csv`, the results page displays **Teach MedCode Finder this medical term**:
+
+1. Select **Add terminology**.
+2. Enter the short term or abbreviation, if one exists.
+3. Enter the full medical term.
+4. Enter other names or synonyms separated by semicolons.
+5. Select **Save terminology**.
+
+The relationship is appended to the local `data/medical_terms.csv` file, and the current search runs again with all related terms. Later searches using the short term, full term, or any saved synonym resolve to the same group. The application rejects a value that already belongs to another terminology row to avoid ambiguous mappings.
+
+Review user-added terminology before relying on it. The application stores the relationship supplied by the user but does not medically validate abbreviations, spellings, synonyms, or equivalence.
 
 ## 9. Understanding results
 
@@ -267,7 +282,7 @@ python -m pip install -r requirements.txt
 
 ### A required column was not found
 
-Open the CSV and compare its header row with the required column names. Remove leading/trailing spaces and preserve capitalization. For NDC data, all three required columns must exist even if some cells are blank.
+Open the CSV and compare its header row with the required column names. Remove leading/trailing spaces and preserve capitalization. For NDC data, `NDC` and all three name/substance columns must exist even if some cells are blank.
 
 ### The CSV fails to load or has the wrong columns
 
@@ -327,6 +342,7 @@ docs/USER_MANUAL.md           This manual
 | `GET` | `/` | Display the application |
 | `GET` | `/status` | Return dataset availability, row counts, and load errors |
 | `GET` | `/abbreviations/<term>` | Show terminology resolution for a term |
+| `POST` | `/medical-terms` | Validate and save a user-added terminology relationship |
 | `POST` | `/upload` | Validate, store, and load a CSV dataset |
 | `POST` | `/search` | Search selected loaded datasets |
 
@@ -349,7 +365,7 @@ The response includes the original keyword, resolved search terms, match summari
 
 - The app does not supply or update medical-code datasets.
 - It does not validate whether a code is current, billable, appropriate, or clinically correct.
-- It does not search every displayed column.
+- It does not search every displayed column; diagnosis/procedure search is limited to `Description` and optional `code`/`codes` columns, while NDC search uses `NDC` and the three configured name/substance columns.
 - It does not provide fuzzy search, relevance ranking, filters, pagination, or export.
 - It displays at most 500 rows per dataset per search.
 - It is designed for one local user and has no multi-user concurrency or access-control model.
