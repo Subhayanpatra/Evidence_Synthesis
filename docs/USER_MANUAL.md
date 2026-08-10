@@ -163,6 +163,17 @@ The server loads valid parent files automatically at startup:
 4. For diagnosis/procedure records, enter the required `codes` and `Description` values and any available metadata: `code_type`, `code_version`, `bill_type`, `cancer_type`, `cancer`, `net`, and `newly_identified`. For NDC records, enter `NDC`, at least one drug/name field, and any available NDC metadata.
 5. Select **Save separate record**.
 
+### Importing multiple user records from CSV
+
+1. Open **Manage datasets**.
+2. Select **Import CSV** on the appropriate Diagnosis, Procedure, or NDC card.
+3. Choose a `.csv` file whose headers match that dataset's complete user-record schema.
+4. Wait for the application to validate and import the file.
+
+The column order may differ, but column names and capitalization must match exactly. The CSV cannot omit expected columns or contain additional columns. When the schema does not match, the interface lists both **Missing columns** and **Unexpected columns** so the file can be corrected.
+
+The complete file is validated before anything is saved. Import is rejected when it contains blank required values, fields longer than 500 characters, duplicate identifiers within the upload, or identifiers already found in parent/user data. Therefore, a failed import does not partially append valid rows. A successful import appends every row to the matching `uploads/.../user_records.csv` file and makes it searchable immediately.
+
 User additions never modify the parent files. They are appended to one of these quarantined CSV files:
 
 - `uploads/diagnosis/user_records.csv`
@@ -368,6 +379,7 @@ docs/USER_MANUAL.md           This manual
 | `POST` | `/medical-terms` | Validate and save a user-added terminology relationship |
 | `POST` | `/upload` | Reject parent replacement attempts (`403`) |
 | `POST` | `/records` | Validate and save a separate user-added record |
+| `POST` | `/records/import` | Validate and bulk-import a schema-matching user CSV |
 | `POST` | `/search` | Search selected loaded datasets |
 
 The endpoints are intended for the bundled local interface. They have no authentication and should not be exposed to untrusted clients.

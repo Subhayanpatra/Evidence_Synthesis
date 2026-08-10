@@ -6,6 +6,7 @@ const normalizationPanel = document.querySelector('#normalizationPanel');
 const termSuggestion = document.querySelector('#termSuggestion');
 const termForm = document.querySelector('#termForm');
 const recordEditor = document.querySelector('#recordEditor');
+const datasetMessage = document.querySelector('#datasetMessage');
 let pendingSearch = null;
 let lastSearch = null;
 let activeRecordKind = null;
@@ -22,11 +23,46 @@ async function refreshStatus() {
       <h3>${names[kind]}</h3>
       <p>${data.base_loaded ? `${data.base_rows.toLocaleString()} parent records` : (data.error || `Parent file ${data.filename} is unavailable`)}</p>
       <small>${data.user_rows.toLocaleString()} user-added records</small>
-      <button class="upload-label add-record-button" type="button" data-kind="${kind}">Add record</button>
+      <div class="dataset-actions">
+        <button class="upload-label add-record-button" type="button" data-kind="${kind}">Add one record</button>
+        <button class="upload-label import-record-button" type="button" data-kind="${kind}">Import CSV</button>
+        <input class="record-file-input" type="file" accept=".csv,text/csv" data-kind="${kind}" hidden>
+      </div>
     </article>`).join('');
 
   cards.querySelectorAll('.add-record-button').forEach(button => button.addEventListener('click', openRecordEditor));
+  cards.querySelectorAll('.import-record-button').forEach(button => button.addEventListener('click', event => {
+    event.currentTarget.parentElement.querySelector('.record-file-input').click();
+  }));
+  cards.querySelectorAll('.record-file-input').forEach(input => input.addEventListener('change', importRecords));
   if (Object.values(status).some(data => !data.base_loaded)) setupPanel.classList.remove('hidden');
+}
+
+async function importRecords(event) {
+  const input = event.currentTarget;
+  if (!input.files.length) return;
+  const kind = input.dataset.kind;
+  const button = input.parentElement.querySelector('.import-record-button');
+  const originalLabel = button.textContent;
+  const formData = new FormData();
+  formData.append('kind', kind);
+  formData.append('file', input.files[0]);
+  button.disabled = true;
+  button.textContent = 'Importing...';
+  datasetMessage.textContent = '';
+  try {
+    const response = await fetch('/records/import', { method: 'POST', body: formData });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    datasetMessage.textContent = result.message;
+    await refreshStatus();
+  } catch (error) {
+    datasetMessage.textContent = error.message;
+    button.disabled = false;
+    button.textContent = originalLabel;
+  } finally {
+    input.value = '';
+  }
 }
 
 function openRecordEditor(event) {

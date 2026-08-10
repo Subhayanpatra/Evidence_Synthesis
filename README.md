@@ -33,7 +33,7 @@ Select **Manage datasets** to view read-only parent record counts or add a separ
 | Procedure | `Description` | `Description` and optional `code`/`codes` | `data/procedure_codes.csv` |
 | Drug / NDC | `NDC`, `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME` | `NDC` and all three name/substance columns | `data/lu_ndc(in).csv` |
 
-Parent datasets are administrator-managed files in `data` and cannot be replaced through the browser. User-added records are stored separately in `uploads/diagnosis/user_records.csv`, `uploads/procedure/user_records.csv`, or `uploads/ndc/user_records.csv`; searches include both sources.
+Parent datasets are administrator-managed files in `data` and cannot be replaced through the browser. Users can add one record or bulk-import a schema-matching CSV. User-added records are stored separately in `uploads/diagnosis/user_records.csv`, `uploads/procedure/user_records.csv`, or `uploads/ndc/user_records.csv`; searches include both sources.
 
 ## Full documentation
 

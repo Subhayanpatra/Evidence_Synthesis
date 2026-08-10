@@ -1,5 +1,6 @@
 from pathlib import Path
 from threading import Lock
+from io import BytesIO
 import re
 
 import pandas as pd
@@ -59,6 +60,18 @@ def read_csv_compatible(path):
             # Codes are identifiers, not numbers. Reading all fields as text keeps
             # significant leading zeroes intact and makes code searches reliable.
             return pd.read_csv(path, low_memory=False, encoding=encoding, dtype=str)
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    raise last_error
+
+
+def read_uploaded_csv(uploaded):
+    """Read an uploaded CSV using the same supported encodings as parent files."""
+    content = uploaded.read()
+    last_error = None
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return pd.read_csv(BytesIO(content), low_memory=False, encoding=encoding, dtype=str)
         except UnicodeDecodeError as exc:
             last_error = exc
     raise last_error
@@ -214,8 +227,8 @@ def load_dataset(kind):
         load_errors[kind] = str(exc)
 
 
-def save_user_record(kind, record):
-    """Append a record to its quarantined user CSV without changing parent data."""
+def save_user_records(kind, records):
+    """Append validated records to a user CSV without changing parent data."""
     target = USER_RECORD_FILES[kind]
     columns = USER_RECORD_COLUMNS[kind]
     existing = read_csv_compatible(target) if target.exists() else pd.DataFrame(columns=columns)
@@ -225,7 +238,7 @@ def save_user_record(kind, record):
     for column in columns:
         if column not in existing.columns:
             existing[column] = ""
-    updated = pd.concat([existing[columns], pd.DataFrame([record], columns=columns)], ignore_index=True)
+    updated = pd.concat([existing[columns], pd.DataFrame(records, columns=columns)], ignore_index=True)
     temporary_file = target.with_suffix(".tmp")
     updated.to_csv(temporary_file, index=False, encoding="utf-8-sig")
     temporary_file.replace(target)
@@ -243,6 +256,21 @@ def record_exists(kind, identifier):
             if df[column].fillna("").astype(str).str.strip().str.casefold().eq(identifier.casefold()).any():
                 return True
     return False
+
+
+def existing_identifiers(kind):
+    """Return normalized identifiers from parent and user-added records."""
+    df = frames[kind]
+    if df is None:
+        return set()
+    if kind == "ndc":
+        return set(df["NDC"].fillna("").astype(str).str.strip().str.casefold()) - {""}
+    identifiers = set()
+    for column in df.columns:
+        if column.casefold() in {"code", "codes"}:
+            identifiers.update(df[column].fillna("").astype(str).str.strip().str.casefold())
+    identifiers.discard("")
+    return identifiers
 
 
 def reload_all():
@@ -383,7 +411,7 @@ def add_record():
         with data_lock:
             if record_exists(kind, identifier):
                 return jsonify({"error": f"Code '{identifier}' already exists."}), 409
-            save_user_record(kind, record)
+            save_user_records(kind, [record])
             load_dataset(kind)
             if load_errors.get(kind):
                 raise ValueError(load_errors[kind])
@@ -392,6 +420,95 @@ def add_record():
 
     return jsonify({
         "message": "Record saved separately from the parent dataset.",
+        "status": dataset_status()[kind],
+    }), 201
+
+
+@app.post("/records/import")
+def import_records():
+    kind = str(request.form.get("kind", "")).strip().lower()
+    uploaded = request.files.get("file")
+    if kind not in FILES:
+        return jsonify({"error": "Invalid dataset type."}), 400
+    if not uploaded or not uploaded.filename:
+        return jsonify({"error": "Choose a CSV file first."}), 400
+    if Path(uploaded.filename).suffix.lower() != ".csv":
+        return jsonify({"error": "Only CSV files are accepted."}), 400
+
+    try:
+        incoming = read_uploaded_csv(uploaded).fillna("")
+    except (UnicodeDecodeError, ValueError, TypeError, pd.errors.ParserError) as exc:
+        return jsonify({"error": f"Could not read the CSV: {exc}"}), 400
+
+    expected = USER_RECORD_COLUMNS[kind]
+    missing = [column for column in expected if column not in incoming.columns]
+    unexpected = [column for column in incoming.columns if column not in expected]
+    if missing or unexpected:
+        details = []
+        if missing:
+            details.append("Missing columns: " + ", ".join(missing))
+        if unexpected:
+            details.append("Unexpected columns: " + ", ".join(unexpected))
+        return jsonify({
+            "error": ". ".join(details) + ".",
+            "expected_columns": expected,
+            "missing_columns": missing,
+            "unexpected_columns": unexpected,
+        }), 400
+    if incoming.empty:
+        return jsonify({"error": "The CSV contains no records."}), 400
+
+    incoming = incoming[expected].astype(str).apply(lambda column: column.str.strip())
+    if kind in ("diagnosis", "procedure"):
+        invalid = incoming.index[
+            incoming["codes"].eq("") | incoming["Description"].eq("")
+        ].tolist()
+        identifiers = incoming["codes"]
+    else:
+        incoming["NDC"] = incoming["NDC"].map(normalize_ndc)
+        missing_names = incoming[[
+            "PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"
+        ]].eq("").all(axis=1)
+        invalid = incoming.index[incoming["NDC"].eq("") | missing_names].tolist()
+        identifiers = incoming["NDC"]
+
+    if invalid:
+        rows = ", ".join(str(index + 2) for index in invalid[:10])
+        suffix = " (first 10 shown)" if len(invalid) > 10 else ""
+        return jsonify({
+            "error": f"Required values are missing on CSV row(s): {rows}{suffix}."
+        }), 400
+    too_long = incoming.apply(lambda column: column.str.len().gt(500)).any(axis=1)
+    if too_long.any():
+        rows = ", ".join(str(index + 2) for index in incoming.index[too_long][:10])
+        return jsonify({"error": f"Values exceed 500 characters on CSV row(s): {rows}."}), 400
+
+    normalized = identifiers.str.casefold()
+    duplicate_in_file = normalized[normalized.duplicated(keep=False)].unique().tolist()
+    existing = existing_identifiers(kind)
+    duplicate_existing = sorted(set(normalized).intersection(existing))
+    duplicates = duplicate_in_file + [value for value in duplicate_existing if value not in duplicate_in_file]
+    if duplicates:
+        shown = ", ".join(duplicates[:10])
+        suffix = " (first 10 shown)" if len(duplicates) > 10 else ""
+        return jsonify({"error": f"Duplicate code(s): {shown}{suffix}."}), 409
+
+    try:
+        with data_lock:
+            # Recheck after acquiring the lock in case another request added data.
+            conflicts = sorted(set(normalized).intersection(existing_identifiers(kind)))
+            if conflicts:
+                return jsonify({"error": f"Duplicate code(s): {', '.join(conflicts[:10])}."}), 409
+            save_user_records(kind, incoming.to_dict(orient="records"))
+            load_dataset(kind)
+            if load_errors.get(kind):
+                raise ValueError(load_errors[kind])
+    except (OSError, ValueError, TypeError, pd.errors.ParserError) as exc:
+        return jsonify({"error": f"Could not import the records: {exc}"}), 500
+
+    return jsonify({
+        "message": f"{len(incoming):,} record(s) imported into separate user storage.",
+        "imported": len(incoming),
         "status": dataset_status()[kind],
     }), 201
 
