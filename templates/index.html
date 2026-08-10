@@ -65,11 +65,26 @@
 
     <section id="setupPanel" class="setup-panel hidden" aria-labelledby="setup-title">
       <div class="panel-heading">
-        <div><p class="step">DATA SETUP</p><h2 id="setup-title">Load your CSV files</h2></div>
+        <div><p class="step">DATA MANAGEMENT</p><h2 id="setup-title">Dataset records</h2></div>
         <button id="closeSetup" class="icon-button" aria-label="Close dataset manager">×</button>
       </div>
-      <p class="muted">Upload each file once. It will be stored locally in this project and loaded by Python.</p>
+      <p class="muted">Parent CSV files are read-only. User additions are stored separately and never change the original datasets.</p>
       <div id="datasetCards" class="dataset-cards"></div>
+      <section id="recordEditor" class="record-editor hidden" aria-labelledby="record-editor-title">
+        <div class="panel-heading">
+          <div><p class="step">USER-ADDED DATA</p><h3 id="record-editor-title">Add record</h3></div>
+          <button id="closeRecordEditor" class="icon-button" type="button" aria-label="Close record form">&times;</button>
+        </div>
+        <p id="recordEditorHelp" class="muted"></p>
+        <form id="recordForm">
+          <div id="recordFields" class="term-fields"></div>
+          <p id="recordMessage" class="message" role="status"></p>
+          <div class="normalization-actions">
+            <button class="primary-button" type="submit"><span>Save separate record</span><b>&rarr;</b></button>
+            <button id="cancelRecord" class="text-button" type="button">Cancel</button>
+          </div>
+        </form>
+      </section>
     </section>
 
     <section id="resultsSection" class="results hidden" aria-labelledby="results-title">

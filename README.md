@@ -23,7 +23,7 @@ python app.py
 
 Then open <http://127.0.0.1:5000>.
 
-Select **Manage datasets**, upload the CSV files you want to search, enter a term or code, select one or more datasets, and choose **Search records**.
+Select **Manage datasets** to view read-only parent record counts or add a separate user record. Enter a term or code, select one or more datasets, and choose **Search records**.
 
 ## Required dataset columns
 
@@ -33,7 +33,7 @@ Select **Manage datasets**, upload the CSV files you want to search, enter a ter
 | Procedure | `Description` | `Description` and optional `code`/`codes` | `data/procedure_codes.csv` |
 | Drug / NDC | `NDC`, `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME` | `NDC` and all three name/substance columns | `data/lu_ndc(in).csv` |
 
-Uploaded CSV files may use UTF-8, Windows-1252, or Latin-1 encoding and may be up to 250 MB each. An uploaded file is copied into the local `data` directory under the fixed filename shown above.
+Parent datasets are administrator-managed files in `data` and cannot be replaced through the browser. User-added records are stored separately in `uploads/diagnosis/user_records.csv`, `uploads/procedure/user_records.csv`, or `uploads/ndc/user_records.csv`; searches include both sources.
 
 ## Full documentation
 

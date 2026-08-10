@@ -115,6 +115,8 @@ codes,Description
 
 Diagnosis and procedure searches inspect `Description` plus any code column named `code` or `codes`. Code-column detection is case-insensitive, so `Code`, `CODE`, and `codes` are supported. The `Description` column remains required. A user can search with either a description such as `hypertension` or a code such as `001`, `I10`, or `99213`.
 
+Code searches containing at least three characters use prefix matching. For example, `I63` returns `I63`, `I630`, `I631`, `I632`, and other codes beginning with `I63`; `K85` returns codes beginning with `K85`; and `002` returns `002`, `0020`, `0021`, and related prefixes. Leading zeros are significant, so enter `002`, not `2`. Inputs shorter than three characters use exact-code matching to prevent excessively broad results. Digits-only queries search code columns rather than descriptions, preventing a value such as `2` from matching unrelated description text.
+
 ### Drug / NDC dataset
 
 Required columns:
@@ -137,25 +139,43 @@ The application searches the `NDC` identifier and the combined text of all three
 
 ### File size and encoding
 
-- The maximum request size is 250 MB per upload.
 - Supported encodings are UTF-8 (including UTF-8 with BOM), Windows-1252, and Latin-1.
 - The application expects comma-separated content. A tab- or semicolon-delimited file should be converted to CSV first.
-- Very large files take longer to upload, parse, and search and require more RAM.
+- Very large parent files take longer to parse and search and require more RAM.
 
-## 6. Loading and replacing datasets
+## 6. Managing parent and user-added data
 
-1. Open MedCode Finder in the browser.
-2. Select **Manage datasets**. The panel opens automatically when one or more datasets are missing.
-3. Find the card for **Diagnosis codes**, **Procedure codes**, or **NDC codes**.
-4. Select **Choose CSV** and pick the corresponding file.
-5. Wait for the card to show the number of loaded records.
-6. Repeat for any other datasets you want to use.
+### Read-only parent datasets
 
-The uploaded file is copied to the project's `data` directory using a fixed internal filename. Its original filename is not retained. Uploading another file for the same dataset replaces the previous file after the new upload is accepted.
+The three authoritative parent files remain in `data`. Users can view their record counts under **Manage datasets**, but the browser provides no upload or replace control. The server also rejects requests to the legacy `/upload` endpoint. Only an administrator with filesystem access can install or replace a parent dataset.
 
-If validation fails, the application reports the missing column or parsing error and does not keep the invalid upload. Correct the source CSV and upload it again.
+The server loads valid parent files automatically at startup:
 
-On later starts, the server automatically loads valid files already present in `data`; it is not necessary to upload them again.
+- `data/diagnosis_codes.csv`
+- `data/procedure_codes.csv`
+- `data/lu_ndc(in).csv`
+
+### Adding a separate user record
+
+1. Open **Manage datasets**.
+2. Locate Diagnosis, Procedure, or NDC.
+3. Select **Add record**.
+4. For diagnosis/procedure records, enter the required `codes` and `Description` values and any available metadata: `code_type`, `code_version`, `bill_type`, `cancer_type`, `cancer`, `net`, and `newly_identified`. For NDC records, enter `NDC`, at least one drug/name field, and any available NDC metadata.
+5. Select **Save separate record**.
+
+User additions never modify the parent files. They are appended to one of these quarantined CSV files:
+
+- `uploads/diagnosis/user_records.csv`
+- `uploads/procedure/user_records.csv`
+- `uploads/ndc/user_records.csv`
+
+The cards show parent and user-added counts separately. Searches include both sources, and the `Data_Source` result column identifies **Parent dataset** or **User-added**. Exact duplicate identifiers are rejected. Numeric user-added NDC values are normalized to 11 digits using the same rule as parent NDC values.
+
+Diagnosis and procedure user CSV files use the same nine-column structure as the supplied parent datasets: `code_type`, `code_version`, `codes`, `Description`, `bill_type`, `cancer_type`, `cancer`, `net`, and `newly_identified`. Only `codes` and `Description` are mandatory in the form; optional fields are saved as blank cells when omitted.
+
+NDC user CSV files use the same 13-column structure as the supplied parent dataset: `NDC`, `PHARM_CLASSES`, `PROPRIETARYNAME`, `NONPROPRIETARYNAME`, `SUBSTANCENAME`, `GENERID`, `GENIND`, `DOSAGEFORMNAME`, `ACTIVE_NUMERATOR_STRENGTH`, `STRNGTH`, `ACTIVE_INGRED_UNIT`, `usc`, and `usc_desc`. `NDC` and at least one of the three name/substance fields are required; other values may be blank.
+
+Separating user additions protects the parent files but does not prove that an addition is correct. An authorized reviewer should inspect the user CSV files before promoting any record into an authoritative dataset.
 
 ## 7. Searching
 
@@ -171,6 +191,7 @@ Search behavior:
 - A match must have non-word boundaries around the query. For example, searching `cat` does not match the `cat` characters inside `cataract`.
 - The entire entered phrase is searched as one term; the application does not independently require every typed word.
 - Diagnosis and procedure searches inspect `Description` and, when present, a `code` or `codes` column.
+- Diagnosis/procedure codes of three or more characters use case-insensitive prefix matching. Shorter code inputs use exact matching.
 - Drug/NDC searches inspect `NDC` plus the three combined name and substance fields.
 - Searches do not use fuzzy spelling, stemming, ranking, or clinical reasoning.
 
@@ -240,28 +261,28 @@ The results area contains:
 
 - The query and, when applicable, the terms used after expansion
 - A summary card with the total match count for each searched dataset
-- A table containing every column from the uploaded CSV
+- A table containing dataset columns plus `Data_Source`
 - A truncation notice when more than 500 rows matched
 
-Empty CSV cells appear as blank cells in the browser. Result order follows the row order in the uploaded file; the application does not sort by relevance.
+Empty CSV cells appear as blank cells in the browser. Parent results appear before user-added results; the application does not sort by relevance.
 
 ## 10. Data storage, privacy, and security
 
-- Uploaded datasets are stored in the local project `data` directory.
+- Administrator-managed parent datasets are stored in `data`; user additions are stored in `uploads`.
 - Search requests are processed by the local Flask server.
 - The application code does not send datasets or queries to an external API.
 - Data remains on disk after the server stops and is reloaded on the next start.
-- Anyone with access to the computer and project directory may be able to read the uploaded CSV files.
+- Anyone with access to the computer and project directory may be able to read the parent and user-added CSV files.
 
 Do not load protected health information or other sensitive data unless the computer, user accounts, storage, backups, and operating procedures meet your organization's requirements. This application does not provide user authentication, encryption at rest, an audit trail, role-based permissions, or automatic retention/deletion controls.
 
-To remove a dataset, stop the server and delete only its corresponding file from `data`, then restart the server:
+Only an administrator should remove or replace a parent dataset. Stop the server, manage only its corresponding file in `data`, and then restart:
 
 - `diagnosis_codes.csv`
 - `procedure_codes.csv`
 - `lu_ndc(in).csv`
 
-Keep `data/.gitkeep`; it preserves the otherwise empty directory in source control. Dataset CSV files are excluded by the repository's `.gitignore` configuration, but you should still verify staged files before committing.
+Keep the `.gitkeep` files; they preserve empty data/upload directories in source control. Parent and user-record CSV files are excluded by `.gitignore`, but you should still verify staged files before committing.
 
 ## 11. Troubleshooting
 
@@ -301,7 +322,7 @@ Re-export the CSV as UTF-8. The loader attempts several common encodings, but it
 
 ### Changes to a file in `data` are not visible
 
-Files are loaded into memory when the server starts or when they are uploaded through the interface. If a file was edited directly on disk, restart the server to reload it.
+Parent files are loaded into memory when the server starts. User additions are loaded immediately after the form saves them. If any CSV was edited directly on disk, restart the server to reload it.
 
 ### Dataset manager immediately reopens
 
@@ -316,9 +337,10 @@ When replacing a code set:
 1. Obtain the new dataset from an authoritative source.
 2. Confirm that the required columns are present.
 3. Keep a backup if your retention policy requires it.
-4. Upload the new CSV from **Manage datasets**.
-5. Confirm the reported row count and run several known searches.
-6. Record the dataset version and effective date outside the application; MedCode Finder does not track them automatically.
+4. Replace the appropriate parent file in `data` while the server is stopped.
+5. Restart the server, confirm the reported parent row count, and run several known searches.
+6. Review the corresponding `uploads` CSV before merging any approved additions.
+7. Record the dataset version and effective date outside the application; MedCode Finder does not track them automatically.
 
 ## 13. Technical reference
 
@@ -329,8 +351,9 @@ app.py                         Flask server, loading, validation, and search
 requirements.txt              Python dependencies
 templates/index.html          Browser page structure
 static/css/style.css          Interface styling
-static/js/app.js              Upload, search, and result interactions
+static/js/app.js              Record addition, search, and result interactions
 data/                          Locally stored CSV files
+uploads/                       Separate user-added CSV records by dataset type
 scripts/import_abbreviations.py  Legacy/helper catalog-import script
 docs/USER_MANUAL.md           This manual
 ```
@@ -343,7 +366,8 @@ docs/USER_MANUAL.md           This manual
 | `GET` | `/status` | Return dataset availability, row counts, and load errors |
 | `GET` | `/abbreviations/<term>` | Show terminology resolution for a term |
 | `POST` | `/medical-terms` | Validate and save a user-added terminology relationship |
-| `POST` | `/upload` | Validate, store, and load a CSV dataset |
+| `POST` | `/upload` | Reject parent replacement attempts (`403`) |
+| `POST` | `/records` | Validate and save a separate user-added record |
 | `POST` | `/search` | Search selected loaded datasets |
 
 The endpoints are intended for the bundled local interface. They have no authentication and should not be exposed to untrusted clients.

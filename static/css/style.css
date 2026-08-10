@@ -64,9 +64,15 @@ legend { font-size: 12px; text-transform: uppercase; font-weight: 800; letter-sp
 .dataset-card { background: #fff; border: 1px solid var(--line); padding: 20px; border-radius: 12px; }
 .dataset-card h3 { margin: 0 0 6px; text-transform: capitalize; }
 .dataset-card p { color: var(--muted); min-height: 38px; font-size: 13px; }
+.dataset-card > small { display: block; color: var(--muted); margin: -24px 0 18px; }
 .dataset-card.loaded { border-top: 4px solid #4c9b69; }
 .upload-label { display: block; padding: 11px; text-align: center; border: 1px dashed #819288; border-radius: 8px; cursor: pointer; font-weight: 700; }
 .upload-label input { display: none; }
+.add-record-button { width: 100%; color: var(--ink); background: white; }
+.add-record-button:hover { border-color: var(--forest); background: #f2f8f3; }
+.record-editor { margin-top: 24px; padding: 24px; border: 1px solid #9fb9aa; border-radius: 12px; background: #f2f8f3; }
+.record-editor h3 { margin: 0; font-family: Georgia, serif; font-size: 27px; font-weight: 500; }
+.record-editor .panel-heading { margin-bottom: 8px; }
 .results { padding: 70px 0; }
 .result-keyword { background: var(--mint); border-radius: 100px; padding: 9px 15px; margin: 0; font-weight: 700; }
 .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }

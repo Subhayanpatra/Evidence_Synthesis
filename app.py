@@ -4,12 +4,14 @@ import re
 
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
-from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+USER_UPLOAD_DIR = BASE_DIR / "uploads"
+for upload_kind in ("diagnosis", "procedure", "ndc"):
+    (USER_UPLOAD_DIR / upload_kind).mkdir(parents=True, exist_ok=True)
 MEDICAL_TERMS_FILE = DATA_DIR / "medical_terms.csv"
 MEDICAL_TERM_COLUMNS = ["Text", "Short_Term", "Long_Term", "Search_Terms"]
 
@@ -18,11 +20,33 @@ FILES = {
     "procedure": "procedure_codes.csv",
     "ndc": "lu_ndc(in).csv",
 }
+USER_RECORD_FILES = {
+    kind: USER_UPLOAD_DIR / kind / "user_records.csv" for kind in FILES
+}
+USER_RECORD_COLUMNS = {
+    "diagnosis": [
+        "code_type", "code_version", "codes", "Description", "bill_type",
+        "cancer_type", "cancer", "net", "newly_identified",
+    ],
+    "procedure": [
+        "code_type", "code_version", "codes", "Description", "bill_type",
+        "cancer_type", "cancer", "net", "newly_identified",
+    ],
+    "ndc": [
+        "NDC", "PHARM_CLASSES", "PROPRIETARYNAME", "NONPROPRIETARYNAME",
+        "SUBSTANCENAME", "GENERID", "GENIND", "DOSAGEFORMNAME",
+        "ACTIVE_NUMERATOR_STRENGTH", "STRNGTH", "ACTIVE_INGRED_UNIT",
+        "usc", "usc_desc",
+    ],
+}
+NDC_REQUIRED_COLUMNS = {"NDC", "PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 
 frames = {key: None for key in FILES}
+base_counts = {key: 0 for key in FILES}
+user_counts = {key: 0 for key in FILES}
 load_errors = {}
 data_lock = Lock()
 
@@ -130,38 +154,95 @@ def normalize_ndc(value):
     return cleaned
 
 
+def code_prefix_mask(series, term):
+    """Match complete short codes or prefixes containing at least three characters."""
+    normalized_codes = series.fillna("").astype(str).str.strip().str.casefold()
+    normalized_term = term.strip().casefold()
+    if len(normalized_term) < 3:
+        return normalized_codes.eq(normalized_term)
+    return normalized_codes.str.startswith(normalized_term, na=False)
+
+
+def prepare_dataset(kind, df, source):
+    """Validate and prepare one parent or user-added dataframe for searching."""
+    df = df.copy()
+    if kind in ("diagnosis", "procedure"):
+        if "Description" not in df.columns:
+            raise ValueError("Required column 'Description' was not found.")
+        if not any(column.casefold() in {"code", "codes"} for column in df.columns):
+            raise ValueError("Required code column 'code' or 'codes' was not found.")
+    else:
+        required = NDC_REQUIRED_COLUMNS
+        missing = sorted(required.difference(df.columns))
+        if missing:
+            raise ValueError("Missing required columns: " + ", ".join(missing))
+        original_ndc = df["NDC"].fillna("").astype(str).str.strip()
+        df["NDC"] = df["NDC"].map(normalize_ndc)
+        df["content"] = (
+            df["NDC"].fillna("").astype(str) + " "
+            + original_ndc + " "
+            + df["PROPRIETARYNAME"].fillna("").astype(str) + " "
+            + df["NONPROPRIETARYNAME"].fillna("").astype(str) + " "
+            + df["SUBSTANCENAME"].fillna("").astype(str)
+        )
+    df["Data_Source"] = source
+    return df
+
+
 def load_dataset(kind):
-    path = DATA_DIR / FILES[kind]
-    if not path.exists():
-        frames[kind] = None
-        load_errors.pop(kind, None)
-        return
+    """Load the read-only parent dataset and separately stored user additions."""
+    parent_path = DATA_DIR / FILES[kind]
+    user_path = USER_RECORD_FILES[kind]
+    datasets = []
+    base_counts[kind] = 0
+    user_counts[kind] = 0
 
     try:
-        df = read_csv_compatible(path)
-        if kind in ("diagnosis", "procedure"):
-            if "Description" not in df.columns:
-                raise ValueError("Required column 'Description' was not found.")
-        else:
-            required = {"NDC", "PROPRIETARYNAME", "NONPROPRIETARYNAME", "SUBSTANCENAME"}
-            missing = sorted(required.difference(df.columns))
-            if missing:
-                raise ValueError("Missing required columns: " + ", ".join(missing))
-            original_ndc = df["NDC"].fillna("").astype(str).str.strip()
-            df["NDC"] = df["NDC"].map(normalize_ndc)
-            df["content"] = (
-                df["NDC"].fillna("").astype(str) + " "
-                + original_ndc + " "
-                + df["PROPRIETARYNAME"].fillna("").astype(str) + " "
-                + df["NONPROPRIETARYNAME"].fillna("").astype(str) + " "
-                + df["SUBSTANCENAME"].fillna("").astype(str)
-            )
+        if parent_path.exists():
+            parent = prepare_dataset(kind, read_csv_compatible(parent_path), "Parent dataset")
+            base_counts[kind] = len(parent)
+            datasets.append(parent)
+        if user_path.exists():
+            additions = prepare_dataset(kind, read_csv_compatible(user_path), "User-added")
+            user_counts[kind] = len(additions)
+            datasets.append(additions)
 
-        frames[kind] = df
+        frames[kind] = pd.concat(datasets, ignore_index=True, sort=False) if datasets else None
         load_errors.pop(kind, None)
     except Exception as exc:
         frames[kind] = None
         load_errors[kind] = str(exc)
+
+
+def save_user_record(kind, record):
+    """Append a record to its quarantined user CSV without changing parent data."""
+    target = USER_RECORD_FILES[kind]
+    columns = USER_RECORD_COLUMNS[kind]
+    existing = read_csv_compatible(target) if target.exists() else pd.DataFrame(columns=columns)
+    required = {"codes", "Description"} if kind in ("diagnosis", "procedure") else NDC_REQUIRED_COLUMNS
+    if not required.issubset(existing.columns):
+        raise ValueError(f"The existing {target.name} has invalid columns.")
+    for column in columns:
+        if column not in existing.columns:
+            existing[column] = ""
+    updated = pd.concat([existing[columns], pd.DataFrame([record], columns=columns)], ignore_index=True)
+    temporary_file = target.with_suffix(".tmp")
+    updated.to_csv(temporary_file, index=False, encoding="utf-8-sig")
+    temporary_file.replace(target)
+
+
+def record_exists(kind, identifier):
+    """Check an exact code/NDC against parent and user-added records."""
+    df = frames[kind]
+    if df is None:
+        return False
+    if kind == "ndc":
+        return df["NDC"].fillna("").astype(str).str.casefold().eq(identifier.casefold()).any()
+    for column in df.columns:
+        if column.casefold() in {"code", "codes"}:
+            if df[column].fillna("").astype(str).str.strip().str.casefold().eq(identifier.casefold()).any():
+                return True
+    return False
 
 
 def reload_all():
@@ -178,6 +259,9 @@ def dataset_status():
             "filename": filename,
             "loaded": df is not None,
             "rows": 0 if df is None else len(df),
+            "base_loaded": (DATA_DIR / filename).exists() and not bool(load_errors.get(kind)),
+            "base_rows": base_counts[kind],
+            "user_rows": user_counts[kind],
             "error": load_errors.get(kind),
         }
     return status
@@ -237,28 +321,79 @@ def add_medical_term():
 
 @app.post("/upload")
 def upload():
-    kind = request.form.get("kind", "")
-    uploaded = request.files.get("file")
+    return jsonify({
+        "error": "Parent datasets are read-only and cannot be replaced by users."
+    }), 403
 
+
+@app.post("/records")
+def add_record():
+    payload = request.get_json(silent=True) or {}
+    kind = str(payload.get("kind", "")).strip().lower()
     if kind not in FILES:
         return jsonify({"error": "Invalid dataset type."}), 400
-    if not uploaded or not uploaded.filename:
-        return jsonify({"error": "Choose a CSV file first."}), 400
-    if Path(secure_filename(uploaded.filename)).suffix.lower() != ".csv":
-        return jsonify({"error": "Only CSV files are accepted."}), 400
 
-    target = DATA_DIR / FILES[kind]
-    uploaded.save(target)
-    with data_lock:
-        load_dataset(kind)
+    if kind in ("diagnosis", "procedure"):
+        code = str(payload.get("code", "")).strip()
+        description = str(payload.get("description", "")).strip()
+        if not code or not description:
+            return jsonify({"error": "Enter both the code and description."}), 400
+        record = {
+            "code_type": str(payload.get("code_type", "")).strip(),
+            "code_version": str(payload.get("code_version", "")).strip(),
+            "codes": code,
+            "Description": description,
+            "bill_type": str(payload.get("bill_type", "")).strip(),
+            "cancer_type": str(payload.get("cancer_type", "")).strip(),
+            "cancer": str(payload.get("cancer", "")).strip(),
+            "net": str(payload.get("net", "")).strip(),
+            "newly_identified": str(payload.get("newly_identified", "")).strip(),
+        }
+        identifier = code
+    else:
+        ndc = normalize_ndc(str(payload.get("ndc", "")).strip())
+        proprietary = str(payload.get("proprietary_name", "")).strip()
+        nonproprietary = str(payload.get("nonproprietary_name", "")).strip()
+        substance = str(payload.get("substance_name", "")).strip()
+        if not ndc:
+            return jsonify({"error": "Enter the NDC code."}), 400
+        if not any((proprietary, nonproprietary, substance)):
+            return jsonify({"error": "Enter at least one drug or substance name."}), 400
+        record = {
+            "NDC": ndc,
+            "PHARM_CLASSES": str(payload.get("pharm_classes", "")).strip(),
+            "PROPRIETARYNAME": proprietary,
+            "NONPROPRIETARYNAME": nonproprietary,
+            "SUBSTANCENAME": substance,
+            "GENERID": str(payload.get("generid", "")).strip(),
+            "GENIND": str(payload.get("genind", "")).strip(),
+            "DOSAGEFORMNAME": str(payload.get("dosage_form_name", "")).strip(),
+            "ACTIVE_NUMERATOR_STRENGTH": str(payload.get("active_numerator_strength", "")).strip(),
+            "STRNGTH": str(payload.get("strength", "")).strip(),
+            "ACTIVE_INGRED_UNIT": str(payload.get("active_ingredient_unit", "")).strip(),
+            "usc": str(payload.get("usc", "")).strip(),
+            "usc_desc": str(payload.get("usc_desc", "")).strip(),
+        }
+        identifier = ndc
 
-    if load_errors.get(kind):
-        target.unlink(missing_ok=True)
-        error = load_errors[kind]
-        load_dataset(kind)
-        return jsonify({"error": error}), 400
+    if any(len(str(value)) > 500 for value in record.values()):
+        return jsonify({"error": "Each field must be 500 characters or fewer."}), 400
 
-    return jsonify({"message": "Dataset loaded successfully.", "status": dataset_status()[kind]})
+    try:
+        with data_lock:
+            if record_exists(kind, identifier):
+                return jsonify({"error": f"Code '{identifier}' already exists."}), 409
+            save_user_record(kind, record)
+            load_dataset(kind)
+            if load_errors.get(kind):
+                raise ValueError(load_errors[kind])
+    except (OSError, ValueError, TypeError, pd.errors.ParserError) as exc:
+        return jsonify({"error": f"Could not save the record: {exc}"}), 500
+
+    return jsonify({
+        "message": "Record saved separately from the parent dataset.",
+        "status": dataset_status()[kind],
+    }), 201
 
 
 @app.post("/search")
@@ -290,20 +425,29 @@ def search():
 
             if kind == "ndc":
                 searchable = df["content"].fillna("").astype(str)
+                mask = pd.Series(False, index=df.index)
+                for term in search_terms:
+                    mask |= searchable.str.contains(
+                        term_pattern(term), case=False, na=False, regex=True
+                    )
             else:
                 # Description is required. Common singular/plural code column
                 # names are detected without requiring specific capitalization.
-                search_columns = ["Description"]
-                search_columns.extend(
+                code_columns = [
                     column for column in df.columns
                     if column.casefold() in {"code", "codes"}
-                )
-                searchable = df[search_columns].fillna("").astype(str).agg(" ".join, axis=1)
-            mask = pd.Series(False, index=df.index)
-            for term in search_terms:
-                mask |= searchable.str.contains(
-                    term_pattern(term), case=False, na=False, regex=True
-                )
+                ]
+                descriptions = df["Description"].fillna("").astype(str)
+                mask = pd.Series(False, index=df.index)
+                for term in search_terms:
+                    # A digits-only query is a medical code lookup; excluding
+                    # descriptions avoids unrelated matches for values like "2".
+                    if not term.strip().isdigit():
+                        mask |= descriptions.str.contains(
+                            term_pattern(term), case=False, na=False, regex=True
+                        )
+                    for column in code_columns:
+                        mask |= code_prefix_mask(df[column], term)
             matched = df.loc[mask].drop(columns=["content"], errors="ignore")
             total = len(matched)
             # Keep the response/browser responsive for very broad searches.

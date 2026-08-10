@@ -1,12 +1,14 @@
 const names = { diagnosis: 'Diagnosis codes', procedure: 'Procedure codes', ndc: 'NDC codes' };
 const setupPanel = document.querySelector('#setupPanel');
 const message = document.querySelector('#message');
-const searchButton = document.querySelector('.primary-button');
+const searchButton = document.querySelector('#searchForm .primary-button');
 const normalizationPanel = document.querySelector('#normalizationPanel');
 const termSuggestion = document.querySelector('#termSuggestion');
 const termForm = document.querySelector('#termForm');
+const recordEditor = document.querySelector('#recordEditor');
 let pendingSearch = null;
 let lastSearch = null;
+let activeRecordKind = null;
 
 document.querySelector('#setupToggle').addEventListener('click', () => setupPanel.classList.toggle('hidden'));
 document.querySelector('#closeSetup').addEventListener('click', () => setupPanel.classList.add('hidden'));
@@ -18,33 +20,85 @@ async function refreshStatus() {
   cards.innerHTML = Object.entries(status).map(([kind, data]) => `
     <article class="dataset-card ${data.loaded ? 'loaded' : ''}">
       <h3>${names[kind]}</h3>
-      <p>${data.loaded ? `${data.rows.toLocaleString()} records loaded` : (data.error || `Waiting for ${data.filename}`)}</p>
-      <label class="upload-label">${data.loaded ? 'Replace CSV' : 'Choose CSV'}
-        <input type="file" accept=".csv,text/csv" data-kind="${kind}">
-      </label>
+      <p>${data.base_loaded ? `${data.base_rows.toLocaleString()} parent records` : (data.error || `Parent file ${data.filename} is unavailable`)}</p>
+      <small>${data.user_rows.toLocaleString()} user-added records</small>
+      <button class="upload-label add-record-button" type="button" data-kind="${kind}">Add record</button>
     </article>`).join('');
 
-  cards.querySelectorAll('input[type=file]').forEach(input => input.addEventListener('change', uploadDataset));
-  if (Object.values(status).some(data => !data.loaded)) setupPanel.classList.remove('hidden');
+  cards.querySelectorAll('.add-record-button').forEach(button => button.addEventListener('click', openRecordEditor));
+  if (Object.values(status).some(data => !data.base_loaded)) setupPanel.classList.remove('hidden');
 }
 
-async function uploadDataset(event) {
-  const input = event.target;
-  if (!input.files.length) return;
-  const data = new FormData();
-  data.append('kind', input.dataset.kind);
-  data.append('file', input.files[0]);
-  input.closest('label').textContent = 'Loading…';
+function openRecordEditor(event) {
+  activeRecordKind = event.currentTarget.dataset.kind;
+  const isNdc = activeRecordKind === 'ndc';
+  document.querySelector('#record-editor-title').textContent = `Add ${names[activeRecordKind].replace(' codes', '')} record`;
+  document.querySelector('#recordEditorHelp').textContent = `Saved in uploads/${activeRecordKind}/user_records.csv. The parent CSV will not be changed.`;
+  document.querySelector('#recordFields').innerHTML = isNdc ? `
+    <label>NDC code<input name="ndc" type="text" maxlength="500" placeholder="e.g. 250" required></label>
+    <label>Pharm classes<input name="pharm_classes" type="text" maxlength="500"></label>
+    <label>Proprietary name<input name="proprietary_name" type="text" maxlength="500" placeholder="Brand name"></label>
+    <label>Nonproprietary name<input name="nonproprietary_name" type="text" maxlength="500" placeholder="Generic name"></label>
+    <label>Substance name<input name="substance_name" type="text" maxlength="500" placeholder="Active ingredient"></label>
+    <label>GENERID<input name="generid" type="text" maxlength="500"></label>
+    <label>GENIND<input name="genind" type="text" maxlength="500"></label>
+    <label>Dosage form name<input name="dosage_form_name" type="text" maxlength="500"></label>
+    <label>Active numerator strength<input name="active_numerator_strength" type="text" maxlength="500"></label>
+    <label>Strength (STRNGTH)<input name="strength" type="text" maxlength="500"></label>
+    <label>Active ingredient unit<input name="active_ingredient_unit" type="text" maxlength="500"></label>
+    <label>USC<input name="usc" type="text" maxlength="500"></label>
+    <label>USC description<input name="usc_desc" type="text" maxlength="500"></label>
+  ` : `
+    <label>Code type<input name="code_type" type="text" maxlength="500" placeholder="e.g. ${activeRecordKind === 'diagnosis' ? 'DIAG' : 'PROC'}"></label>
+    <label>Code version<input name="code_version" type="text" maxlength="500" placeholder="e.g. ICD-10-CM"></label>
+    <label>Code<input name="code" type="text" maxlength="500" placeholder="e.g. I639" required></label>
+    <label>Description<input name="description" type="text" maxlength="500" placeholder="Medical code description" required></label>
+    <label>Bill type<input name="bill_type" type="text" maxlength="500"></label>
+    <label>Cancer type<input name="cancer_type" type="text" maxlength="500"></label>
+    <label>Cancer<input name="cancer" type="text" maxlength="500"></label>
+    <label>NET<input name="net" type="text" maxlength="500"></label>
+    <label>Newly identified<input name="newly_identified" type="text" maxlength="500"></label>
+  `;
+  document.querySelector('#recordMessage').textContent = '';
+  recordEditor.classList.remove('hidden');
+  recordEditor.querySelector('input').focus();
+  recordEditor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeRecordEditor() {
+  recordEditor.classList.add('hidden');
+  activeRecordKind = null;
+}
+
+document.querySelector('#closeRecordEditor').addEventListener('click', closeRecordEditor);
+document.querySelector('#cancelRecord').addEventListener('click', closeRecordEditor);
+
+document.querySelector('#recordForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!activeRecordKind) return;
+  const submitButton = event.currentTarget.querySelector('button[type=submit]');
+  const recordMessage = document.querySelector('#recordMessage');
+  const payload = { kind: activeRecordKind };
+  new FormData(event.currentTarget).forEach((value, key) => { payload[key] = String(value).trim(); });
+  submitButton.disabled = true;
+  recordMessage.textContent = '';
   try {
-    const response = await fetch('/upload', { method: 'POST', body: data });
+    const response = await fetch('/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
-    message.textContent = '';
+    closeRecordEditor();
+    message.textContent = result.message;
+    await refreshStatus();
   } catch (error) {
-    message.textContent = error.message;
+    recordMessage.textContent = error.message;
+  } finally {
+    submitButton.disabled = false;
   }
-  await refreshStatus();
-}
+});
 
 document.querySelector('#searchForm').addEventListener('submit', async event => {
   event.preventDefault();
@@ -80,7 +134,7 @@ document.querySelector('#cancelNormalization').addEventListener('click', () => {
 
 async function runSearch(keyword, datasets, abbreviation = '') {
   searchButton.disabled = true;
-  searchButton.querySelector('span').textContent = 'Searching…';
+  searchButton.querySelector('span').textContent = 'Searching...';
   try {
     const response = await fetch('/search', {
       method: 'POST',
@@ -92,7 +146,7 @@ async function runSearch(keyword, datasets, abbreviation = '') {
     lastSearch = { keyword, datasets };
     renderResults(data, abbreviation);
     if (data.unavailable.length) {
-      message.textContent = `Upload ${data.unavailable.map(item => names[item]).join(', ')} to include it in this search.`;
+      message.textContent = `Ask an administrator to provide ${data.unavailable.map(item => names[item]).join(', ')}.`;
     }
   } catch (error) {
     message.textContent = error.message;
@@ -109,8 +163,8 @@ function escapeHtml(value) {
 function renderResults(data, abbreviation = '') {
   const section = document.querySelector('#resultsSection');
   document.querySelector('#resultKeyword').textContent = data.expanded
-    ? `${data.keyword} → ${data.search_terms.join('; ')}`
-    : `“${data.keyword}”`;
+    ? `${data.keyword} -> ${data.search_terms.join('; ')}`
+    : `"${data.keyword}"`;
   document.querySelector('#summary').innerHTML = data.summary.map(item => `
     <div class="summary-card"><strong>${item.matches.toLocaleString()}</strong><span>${names[item.dataset]}</span></div>`).join('');
   termSuggestion.classList.toggle('hidden', data.expanded);
@@ -121,7 +175,7 @@ function renderResults(data, abbreviation = '') {
     const head = result.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('');
     const body = result.rows.map(row => `<tr>${result.columns.map(column => `<td>${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('');
     return `<article class="table-card">
-      <header><h3 class="table-title">${names[kind]}</h3><span>${result.total.toLocaleString()} matches${result.truncated ? ' · first 500 shown' : ''}</span></header>
+      <header><h3 class="table-title">${names[kind]}</h3><span>${result.total.toLocaleString()} matches${result.truncated ? ' - first 500 shown' : ''}</span></header>
       ${result.total ? `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` : '<p class="empty">No matching records found.</p>'}
     </article>`;
   }).join('');
