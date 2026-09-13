@@ -17,6 +17,11 @@ have one. Do not commit API keys. An existing Render Web Service does not pick
 up these dashboard settings from this README; save the values in its Settings
 page and redeploy.
 
+CSV datasets are intentionally excluded from GitHub. The Code Lookup page can
+open without them, but diagnosis, procedure, and NDC searches remain
+unavailable until the datasets are provided in its `data` directory. Loading
+the full datasets into memory can exceed Render's 512 MB free instance limit.
+
 User-added lookup records and generated research files are written to local
 files. Render's default filesystem does not preserve those files across
 restarts or deploys, so use persistent storage before relying on them.

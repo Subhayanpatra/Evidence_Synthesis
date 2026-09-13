@@ -1,8 +1,6 @@
 __pycache__/
 *.pyc
-data/*.csv
-!data/.gitkeep
-uploads/**/*.csv
+*.csv
 uploads/**/*.tmp
 
 # Local environments and editor files
@@ -13,7 +11,6 @@ uploads/**/*.tmp
 # Local credentials and generated research/user data
 .env
 .streamlit/secrets.toml
-**/uploads/**/*.csv
 **/uploads/**/*.tmp
 **/data/outputs/
 **/data/supplementary_materials/
