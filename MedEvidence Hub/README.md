@@ -1,5 +1,26 @@
 # MedEvidence Hub
 
+## Deploy on Render
+
+Create a **Python Web Service** from this repository, or update the settings of
+an existing service:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `MedEvidence Hub` |
+| Build Command | `python -m pip install -r requirements.txt` |
+| Start Command | `uvicorn server:app --host 0.0.0.0 --port $PORT` |
+
+The repository's `.python-version` selects Python 3.13. Add `NCBI_EMAIL` and
+`OPENAI_API_KEY` in the Render environment settings, and `NCBI_API_KEY` if you
+have one. Do not commit API keys. An existing Render Web Service does not pick
+up these dashboard settings from this README; save the values in its Settings
+page and redeploy.
+
+User-added lookup records and generated research files are written to local
+files. Render's default filesystem does not preserve those files across
+restarts or deploys, so use persistent storage before relying on them.
+
 MedEvidence Hub combines two local applications in one website:
 
 - **Intelligent Code Lookup**: diagnosis, procedure, drug, and NDC code search.
