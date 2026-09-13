@@ -1,0 +1,39 @@
+Text,Short_Term,Long_Term,Search_Terms
+NSCLC,NSCLC,Non-small cell lung cancer,Non-small cell lung cancer; NSCLC; lung cancer; lung carcinoma; malignant neoplasm of lung; bronchogenic carcinoma; pulmonary carcinoma
+SCLC,SCLC,Small cell lung cancer,Small cell lung cancer; SCLC; small cell carcinoma of lung; oat cell carcinoma; pulmonary small cell carcinoma
+DM,DM,Diabetes mellitus,Diabetes mellitus; DM; diabetes; diabetic disease
+T1DM,T1DM,Type 1 diabetes mellitus,Type 1 diabetes mellitus; T1DM; type 1 diabetes; insulin-dependent diabetes mellitus; IDDM
+T2DM,T2DM,Type 2 diabetes mellitus,Type 2 diabetes mellitus; T2DM; type 2 diabetes; non-insulin-dependent diabetes mellitus; NIDDM
+HTN,HTN,Hypertension,Hypertension; HTN; high blood pressure; arterial hypertension
+MI,MI,Myocardial infarction,Myocardial infarction; MI; heart attack; acute myocardial infarction; AMI
+CAD,CAD,Coronary artery disease,Coronary artery disease; CAD; coronary heart disease; CHD; ischemic heart disease
+HF,HF,Heart failure,Heart failure; HF; cardiac failure; congestive heart failure; CHF
+AF,AF,Atrial fibrillation,Atrial fibrillation; AF; AFib; atrial fibrillation disorder
+CKD,CKD,Chronic kidney disease,Chronic kidney disease; CKD; chronic renal disease; chronic renal failure; chronic kidney failure
+AKI,AKI,Acute kidney injury,Acute kidney injury; AKI; acute renal injury; acute renal failure
+COPD,COPD,Chronic obstructive pulmonary disease,Chronic obstructive pulmonary disease; COPD; chronic obstructive lung disease; chronic airflow obstruction
+TB,TB,Tuberculosis,Tuberculosis; TB; tuberculous disease; Mycobacterium tuberculosis infection
+RA,RA,Rheumatoid arthritis,Rheumatoid arthritis; RA; rheumatoid disease; inflammatory polyarthritis
+OA,OA,Osteoarthritis,Osteoarthritis; OA; degenerative joint disease; degenerative arthritis
+MS,MS,Multiple sclerosis,Multiple sclerosis; MS; disseminated sclerosis
+AD,AD,Alzheimer disease,Alzheimer disease; Alzheimer's disease; AD; Alzheimer dementia
+PD,PD,Parkinson disease,Parkinson disease; Parkinson's disease; PD; parkinsonism
+IBD,IBD,Inflammatory bowel disease,Inflammatory bowel disease; IBD; inflammatory intestinal disease
+UC,UC,Ulcerative colitis,Ulcerative colitis; UC; ulcerative rectocolitis
+CD,CD,Crohn disease,Crohn disease; Crohn's disease; CD; regional enteritis
+GERD,GERD,Gastroesophageal reflux disease,Gastroesophageal reflux disease; GERD; acid reflux; gastro-oesophageal reflux disease
+HCC,HCC,Hepatocellular carcinoma,Hepatocellular carcinoma; HCC; liver cell carcinoma; primary liver carcinoma
+CRC,CRC,Colorectal cancer,Colorectal cancer; CRC; colorectal carcinoma; cancer of colon and rectum
+RCC,RCC,Renal cell carcinoma,Renal cell carcinoma; RCC; renal carcinoma; kidney carcinoma
+AML,AML,Acute myeloid leukemia,Acute myeloid leukemia; AML; acute myelogenous leukemia; acute myeloblastic leukemia
+ALL,ALL,Acute lymphoblastic leukemia,Acute lymphoblastic leukemia; ALL; acute lymphocytic leukemia
+CML,CML,Chronic myeloid leukemia,Chronic myeloid leukemia; CML; chronic myelogenous leukemia
+CLL,CLL,Chronic lymphocytic leukemia,Chronic lymphocytic leukemia; CLL; chronic lymphocytic leukaemia
+MM,MM,Multiple myeloma,Multiple myeloma; MM; plasma cell myeloma; myeloma
+DVT,DVT,Deep vein thrombosis,Deep vein thrombosis; DVT; deep venous thrombosis
+PE,PE,Pulmonary embolism,Pulmonary embolism; PE; pulmonary thromboembolism
+CVA,CVA,Cerebrovascular accident,Cerebrovascular accident; CVA; stroke; cerebral infarction
+UTI,UTI,Urinary tract infection,Urinary tract infection; UTI; urinary infection
+BPH,BPH,Benign prostatic hyperplasia,Benign prostatic hyperplasia; BPH; benign enlargement of prostate; benign prostatic hypertrophy
+PCOS,PCOS,Polycystic ovary syndrome,Polycystic ovary syndrome; PCOS; polycystic ovarian syndrome
+ED,ED,Erectile dysfunction,Erectile dysfunction; ED; impotence

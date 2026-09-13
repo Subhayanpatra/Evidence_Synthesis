@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Intelligent Code Lookup | MedEvidence Hub</title>
+  <meta name="description" content="Search local diagnosis, procedure, and NDC code datasets.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <main class="workspace">
+    <section class="lookup-column">
+      <header class="page-header">
+        <a class="back-link" href="/" aria-label="Back to MedEvidence Hub">←</a>
+        <div><h1>Intelligent code look up</h1><p>Local medical-code repository</p></div>
+        <button id="setupToggle" class="manage-button" type="button">Manage datasets</button>
+      </header>
+
+      <section class="search-panel" aria-labelledby="search-title">
+        <h2 id="search-title" class="sr-only">Search medical codes</h2>
+        <form id="searchForm">
+          <label class="search-box" for="keyword">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <span class="search-copy"><small>Type the disease or drug or procedure name</small><input id="keyword" type="search" placeholder="e.g. NSCLC, C780, G0210" autocomplete="off" required></span>
+            <button class="clear-button" type="button" id="clearSearch" aria-label="Clear search">×</button>
+            <button class="search-submit" type="submit">Search</button>
+          </label>
+          <fieldset>
+            <legend>Internal repository <span class="status-dot" aria-label="Local repository active">✓</span></legend>
+            <div class="choices">
+              <label><input type="checkbox" name="dataset" value="diagnosis" checked><span><i aria-hidden="true"></i><b>▣</b> Diagnosis <small>(ICD-9 &amp; ICD-10)</small></span></label>
+              <label><input type="checkbox" name="dataset" value="procedure" checked><span><i aria-hidden="true"></i><b>▱</b> Procedures <small>(HCPCS codes)</small></span></label>
+              <label><input type="checkbox" name="dataset" value="ndc" checked><span><i aria-hidden="true"></i><b>♙</b> Drug / NDC <small>(Names &amp; substances)</small></span></label>
+            </div>
+          </fieldset>
+        </form>
+        <section id="normalizationPanel" class="normalization-panel hidden" aria-labelledby="normalization-title">
+          <p class="section-label">ABBREVIATION FOUND</p><h3 id="normalization-title">Choose the intended full term</h3><p id="normalizationHelp" class="muted"></p>
+          <form id="normalizationForm"><div id="normalizationOptions" class="normalization-options"></div><div class="form-actions"><button class="action-button" type="submit">Use selected term →</button><button id="cancelNormalization" class="text-button" type="button">Cancel</button></div></form>
+        </section>
+        <p id="message" class="message" role="status"></p>
+      </section>
+
+      <section id="setupPanel" class="setup-panel hidden" aria-labelledby="setup-title">
+        <div class="panel-heading"><div><p class="section-label">DATA MANAGEMENT</p><h2 id="setup-title">Dataset records</h2></div><button id="closeSetup" class="close-button" aria-label="Close dataset manager">×</button></div>
+        <p class="muted">Parent files remain read-only; user records are saved separately.</p><div id="datasetCards" class="dataset-cards"></div><p id="datasetMessage" class="message" role="status"></p>
+        <section id="recordEditor" class="record-editor hidden" aria-labelledby="record-editor-title"><div class="panel-heading"><div><p class="section-label">USER-ADDED DATA</p><h3 id="record-editor-title">Add record</h3></div><button id="closeRecordEditor" class="close-button" type="button" aria-label="Close record form">×</button></div><p id="recordEditorHelp" class="muted"></p><form id="recordForm"><div id="recordFields" class="term-fields"></div><p id="recordMessage" class="message" role="status"></p><div class="form-actions"><button class="action-button" type="submit">Save separate record →</button><button id="cancelRecord" class="text-button" type="button">Cancel</button></div></form></section>
+      </section>
+
+      <section id="resultsSection" class="results hidden" aria-labelledby="results-title">
+        <div class="results-heading"><div><p class="section-label">SEARCH RESULTS</p><h2 id="results-title">Results</h2></div><p id="resultKeyword" class="result-keyword"></p></div>
+        <div id="summary" class="summary-grid"></div>
+        <section id="termSuggestion" class="term-suggestion hidden" aria-labelledby="term-suggestion-title"><div id="termSuggestionPrompt"><p class="section-label">TERM NOT RECOGNIZED</p><h3 id="term-suggestion-title">Teach the repository this medical term</h3><p class="muted">Connect an abbreviation, full name, and related names so future searches find all of them together.</p><button id="openTermForm" class="text-button" type="button">Add terminology</button></div><form id="termForm" class="term-form hidden"><div class="term-fields"><label>Short term or abbreviation <span>(optional)</span><input id="termShort" type="text" maxlength="300" placeholder="e.g. COPD"></label><label>Full medical term<input id="termLong" type="text" maxlength="300" placeholder="e.g. Chronic obstructive pulmonary disease" required></label><label class="term-aliases">Related names or synonyms <span>(separate with semicolons)</span><textarea id="termAliases" maxlength="15000" placeholder="e.g. chronic obstructive lung disease; chronic airflow limitation"></textarea></label></div><p id="termFormMessage" class="message" role="status"></p><div class="form-actions"><button class="action-button" type="submit">Save terminology →</button><button id="cancelTermForm" class="text-button" type="button">Cancel</button></div></form></section>
+        <div id="resultTables"></div>
+      </section>
+    </section>
+
+    <aside class="intelligence-sidebar" aria-label="Smart Code Intelligence">
+      <section class="intelligence-card"><header><span>☼</span> Smart Code Intelligence</header><div class="intelligence-content"><p class="intelligence-title"><span>✓</span> Smart Code Intelligence <button type="button" title="Insights will be connected to your backend later.">ⓘ</button></p><div class="intelligence-summary"><p>Intelligence-Suggested Codes <small>(additional)</small></p><div class="smart-counts"><label><input type="checkbox" name="smartDataset" value="diagnosis" checked><i aria-hidden="true"></i><b>▣</b><strong id="smartDiagnosis">—</strong><span>Diagnosis codes</span></label><label><input type="checkbox" name="smartDataset" value="procedure" checked><i aria-hidden="true"></i><b>▱</b><strong id="smartProcedure">—</strong><span>Procedure codes</span></label><label><input type="checkbox" name="smartDataset" value="ndc" checked><i aria-hidden="true"></i><b>♙</b><strong id="smartNdc">—</strong><span>NDC codes</span></label></div><footer>Total (Smart Code Intelligence) <strong id="smartTotal">—</strong></footer></div><p class="intelligence-note" id="intelligenceNote">Connect your intelligence backend to show suggested related codes.</p></div></section>
+      <section class="repository-card"><header>▱ &nbsp; Codes (Local repository)</header><div id="repositorySummary" class="repository-summary"><p>Search to view matching local codes.</p></div></section>
+    </aside>
+  </main>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

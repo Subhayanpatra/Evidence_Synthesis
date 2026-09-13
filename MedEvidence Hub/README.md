@@ -1,4 +1,21 @@
-# MedCode Finder
+# MedEvidence Hub
+
+MedEvidence Hub combines two local applications in one website:
+
+- **Intelligent Code Lookup**: diagnosis, procedure, drug, and NDC code search.
+- **Evidence Synthesis**: Europe PMC retrieval and AI-assisted research extraction.
+
+Run both applications together from this project directory:
+
+```powershell
+cd "D:\Code_extract\MedEvidence Hub"
+.\.hub-venv\Scripts\python.exe server.py
+```
+
+Open <http://127.0.0.1:5000>. The Hub routes users to `/code-lookup/` or
+`/evidence-synthesis/` while preserving each application's existing features.
+
+## Intelligent Code Lookup
 
 MedCode Finder is a local web application for searching diagnosis, procedure, and drug/NDC records stored in CSV files. The browser interface runs against a Python/Flask server on your computer; the application does not call an external search API.
 
@@ -12,13 +29,15 @@ MedCode Finder is a local web application for searching diagnosis, procedure, an
 
 ### Install and run
 
-Open PowerShell in the project directory and run:
+To create the compatible Hub environment on another computer, use Python 3.10
+or newer:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+cd "D:\Code_extract\MedEvidence Hub"
+python -m venv .hub-venv
+.\.hub-venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python app.py
+python server.py
 ```
 
 Then open <http://127.0.0.1:5000>.

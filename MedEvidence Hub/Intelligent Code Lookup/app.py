@@ -300,7 +300,19 @@ reload_all()
 
 @app.get("/")
 def home():
+    # In the unified server this Flask app is mounted at /code-lookup, so its
+    # own root is the Intelligent Code Lookup workspace.
     return render_template("index.html")
+
+
+@app.get("/code-lookup")
+def code_lookup():
+    return render_template("index.html")
+
+
+@app.get("/evidence-synthesis")
+def evidence_synthesis():
+    return render_template("evidence_synthesis.html")
 
 
 @app.get("/status")
@@ -588,4 +600,19 @@ def search():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    # Keep the familiar `python app.py` command, but launch the unified Hub
+    # instead of opening the Code Lookup application as the site's first page.
+    import os
+    import sys
+    from pathlib import Path
+    import uvicorn
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from server import app as hub_app
+
+    uvicorn.run(
+        hub_app,
+        host=os.getenv("MEDEVIDENCE_HOST", "127.0.0.1"),
+        port=int(os.getenv("MEDEVIDENCE_PORT", "5000")),
+        reload=False,
+    )

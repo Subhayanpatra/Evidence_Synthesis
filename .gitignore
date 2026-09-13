@@ -4,3 +4,16 @@ data/*.csv
 !data/.gitkeep
 uploads/**/*.csv
 uploads/**/*.tmp
+
+# Local environments and editor files
+.venv/
+.hub-venv/
+.idea/
+
+# Local credentials and generated research/user data
+.env
+.streamlit/secrets.toml
+**/uploads/**/*.csv
+**/uploads/**/*.tmp
+**/data/outputs/
+**/data/supplementary_materials/

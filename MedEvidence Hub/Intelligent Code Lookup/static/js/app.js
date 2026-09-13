@@ -1,7 +1,7 @@
 const names = { diagnosis: 'Diagnosis codes', procedure: 'Procedure codes', ndc: 'NDC codes' };
 const setupPanel = document.querySelector('#setupPanel');
 const message = document.querySelector('#message');
-const searchButton = document.querySelector('#searchForm .primary-button');
+const searchButton = document.querySelector('#searchForm .search-submit');
 const normalizationPanel = document.querySelector('#normalizationPanel');
 const termSuggestion = document.querySelector('#termSuggestion');
 const termForm = document.querySelector('#termForm');
@@ -13,9 +13,13 @@ let activeRecordKind = null;
 
 document.querySelector('#setupToggle').addEventListener('click', () => setupPanel.classList.toggle('hidden'));
 document.querySelector('#closeSetup').addEventListener('click', () => setupPanel.classList.add('hidden'));
+document.querySelector('#clearSearch').addEventListener('click', () => {
+  document.querySelector('#keyword').value = '';
+  document.querySelector('#keyword').focus();
+});
 
 async function refreshStatus() {
-  const response = await fetch('/status');
+  const response = await fetch('./status');
   const status = await response.json();
   const cards = document.querySelector('#datasetCards');
   cards.innerHTML = Object.entries(status).map(([kind, data]) => `
@@ -51,7 +55,7 @@ async function importRecords(event) {
   button.textContent = 'Importing...';
   datasetMessage.textContent = '';
   try {
-    const response = await fetch('/records/import', { method: 'POST', body: formData });
+    const response = await fetch('./records/import', { method: 'POST', body: formData });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
     datasetMessage.textContent = result.message;
@@ -119,7 +123,7 @@ document.querySelector('#recordForm').addEventListener('submit', async event => 
   submitButton.disabled = true;
   recordMessage.textContent = '';
   try {
-    const response = await fetch('/records', {
+    const response = await fetch('./records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -170,9 +174,9 @@ document.querySelector('#cancelNormalization').addEventListener('click', () => {
 
 async function runSearch(keyword, datasets, abbreviation = '') {
   searchButton.disabled = true;
-  searchButton.querySelector('span').textContent = 'Searching...';
+  searchButton.textContent = 'Searching...';
   try {
-    const response = await fetch('/search', {
+    const response = await fetch('./search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keyword, datasets })
@@ -188,7 +192,7 @@ async function runSearch(keyword, datasets, abbreviation = '') {
     message.textContent = error.message;
   } finally {
     searchButton.disabled = false;
-    searchButton.querySelector('span').textContent = 'Search records';
+    searchButton.textContent = 'Search';
   }
 }
 
@@ -215,8 +219,31 @@ function renderResults(data, abbreviation = '') {
       ${result.total ? `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` : '<p class="empty">No matching records found.</p>'}
     </article>`;
   }).join('');
+  renderRepositorySummary(data);
   section.classList.remove('hidden');
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderRepositorySummary(data) {
+  const labels = { diagnosis: 'Diagnosis codes', procedure: 'Procedure codes', ndc: 'NDC codes' };
+  const codeColumn = row => Object.keys(row).find(key => ['code', 'codes', 'ndc'].includes(key.toLowerCase()));
+  const summary = Object.entries(data.results).map(([kind, result]) => {
+    const rows = result.rows.slice(0, 5);
+    const links = rows.length ? rows.map(row => {
+      const key = codeColumn(row);
+      const value = key ? row[key] : 'Record';
+      return `<a href="#resultTables">${escapeHtml(value)} <span>↗</span></a>`;
+    }).join('') : '<p>No matching records found.</p>';
+    return `<section class="repository-group"><h3>${labels[kind]} <span>${result.total.toLocaleString()}</span></h3>${links}</section>`;
+  }).join('');
+  document.querySelector('#repositorySummary').innerHTML = summary || '<p>No local results available.</p>';
+
+  // This panel intentionally remains a front-end placeholder until the
+  // intelligence service is connected. It must not present local matches as AI suggestions.
+  ['smartDiagnosis', 'smartProcedure', 'smartNdc', 'smartTotal'].forEach(id => {
+    document.querySelector(`#${id}`).textContent = '—';
+  });
+  document.querySelector('#intelligenceNote').textContent = 'Local results are shown below. Connect your intelligence backend to show additional suggested codes.';
 }
 
 document.querySelector('#openTermForm').addEventListener('click', () => {
@@ -242,7 +269,7 @@ termForm.addEventListener('submit', async event => {
   submitButton.disabled = true;
   formMessage.textContent = '';
   try {
-    const response = await fetch('/medical-terms', {
+    const response = await fetch('./medical-terms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
